@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code 智慧解碼器 - 明亮極速版</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f3ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    animation: {
+                        'laser': 'laserScan 2s infinite linear',
+                        'pulse-subtle': 'pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        laserScan: {
+                            '0%, 100%': { top: '5%' },
+                            '50%': { top: '90%' },
+                        },
+                        pulseSubtle: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.6' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- external JS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" onerror="loadScriptFallback('jsqr')"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .light-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+        .light-card-hover {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .light-card-hover:hover {
+            border-color: rgba(99, 102, 241, 0.4);
+            box-shadow: 0 12px 24px -6px rgba(99, 102, 241, 0.12);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white flex flex-col">
+
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-200/80 bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            
+            <!-- Brand Logo -->
+            <button onclick="switchView('decoder')" class="flex items-center space-x-3 group text-left">
+                <div class="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 group-hover:scale-105 transition-transform shadow-sm">
+                    <i data-lucide="scan-line" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base sm:text-lg leading-tight bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                        QR Code 智慧解碼器
+                    </h1>
+                    <p class="text-[11px] text-slate-500 hidden sm:block">極速解析 • 鏡頭對焦 • 隱私安全</p>
+                </div>
+            </button>
+
+            <!-- Navigation Links & Audio Toggle -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <nav class="flex space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button id="nav-decoder" onclick="switchView('decoder')" class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 bg-white text-indigo-600 shadow-sm">
+                        <i data-lucide="scan" class="w-3.5 h-3.5"></i>
+                        <span>掃描解碼</span>
+                    </button>
+                    <button id="nav-history" onclick="switchView('history')" class="nav-btn px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 text-slate-600 hover:text-slate-900 relative">
+                        <i data-lucide="history" class="w-3.5 h-3.5"></i>
+                        <span>歷史紀錄</span>
+                        <span id="history-badge" class="hidden absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] w-4 h-4 rounded-full items-center justify-center font-bold">0</span>
+                    </button>
+                </nav>
+
+                <!-- Sound FX Toggle Button -->
+                <button id="sound-toggle-btn" onclick="toggleSound()" class="p-2 bg-white border border-slate-200 hover:border-slate-300 text-indigo-600 rounded-xl text-xs transition shadow-sm" title="切換解碼提示音效">
+                    <i id="sound-icon" data-lucide="volume-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-center">
+
+        <!-- ================= VIEW 1: DECODER / SCANNER (MAIN) ================= -->
+        <section id="view-decoder" class="view-panel block space-y-6">
+            
+            <div class="text-center max-w-2xl mx-auto space-y-2 mb-2">
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-medium">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-indigo-500"></i>
+                    零資料上傳 • 100% 本機瀏覽器安全解析
+                </div>
+                <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                    請選擇 QR Code <span class="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">讀取方式</span>
+                </h2>
+                <p class="text-xs sm:text-sm text-slate-500">
+                    支援裝置鏡頭對焦掃描、拖曳上傳圖片檔案，或是使用鍵盤快捷鍵 <kbd class="px-1.5 py-0.5 bg-slate-200 border border-slate-300 rounded text-[11px] font-mono text-slate-700">Ctrl + V</kbd> 貼上圖片。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Decoder Inputs Left Column -->
+                <div class="lg:col-span-6 space-y-4">
+                    <div class="light-card rounded-2xl p-5 shadow-sm">
+                        
+                        <!-- Mode Selector Tabs -->
+                        <div class="flex border-b border-slate-200 mb-5">
+                            <button id="dec-mode-cam-btn" onclick="switchDecodeMode('camera')" class="flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center justify-center gap-2 transition">
+                                <i data-lucide="camera" class="w-4 h-4"></i>
+                                鏡頭即時掃描
+                            </button>
+                            <button id="dec-mode-file-btn" onclick="switchDecodeMode('file')" class="flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition">
+                                <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                                圖片上傳 / 貼上
+                            </button>
+                        </div>
+
+                        <!-- 1. Camera Viewport -->
+                        <div id="dec-view-camera" class="space-y-4">
+                            <div class="relative bg-slate-900 rounded-2xl overflow-hidden aspect-square max-w-sm mx-auto border border-slate-200 shadow-inner flex items-center justify-center">
+                                
+                                <video id="scanner-video" class="w-full h-full object-cover hidden" playsinline></video>
+                                <canvas id="scanner-canvas" class="hidden"></canvas>
+
+                                <!-- Placeholder -->
+                                <div id="cam-placeholder" class="text-center p-6 space-y-3">
+                                    <div class="w-16 h-16 bg-white/10 text-slate-300 rounded-full flex items-center justify-center mx-auto border border-white/10 shadow-sm">
+                                        <i data-lucide="camera" class="w-8 h-8"></i>
+                                    </div>
+                                    <p class="text-xs text-slate-300">點擊下方按鈕啟動相機鏡頭</p>
+                                </div>
+
+                                <!-- Overlay Targeting Frame -->
+                                <div id="cam-overlay" class="hidden absolute inset-0 pointer-events-none flex items-center justify-center">
+                                    <div class="w-3/4 h-3/4 border-2 border-indigo-400/80 rounded-2xl relative shadow-[0_0_0_9999px_rgba(15,23,42,0.65)]">
+                                        <div class="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-indigo-400 rounded-tl"></div>
+                                        <div class="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-indigo-400 rounded-tr"></div>
+                                        <div class="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-indigo-400 rounded-bl"></div>
+                                        <div class="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-indigo-400 rounded-br"></div>
+                                        <div class="w-full h-0.5 bg-indigo-400 shadow-[0_0_12px_2px_rgba(99,102,241,0.9)] absolute animate-laser"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-center gap-3">
+                                <button id="start-cam-btn" onclick="startCamera()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-indigo-200 flex items-center gap-2">
+                                    <i data-lucide="play" class="w-4 h-4"></i>
+                                    啟動相機掃描
+                                </button>
+                                <button id="stop-cam-btn" onclick="stopCamera()" class="hidden px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-2">
+                                    <i data-lucide="square" class="w-4 h-4"></i>
+                                    關閉相機
+                                </button>
+                                <button id="switch-cam-btn" onclick="switchCameraFacing()" class="hidden p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs transition" title="切換前後鏡頭">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 2. Drop Zone & Paste Area -->
+                        <div id="dec-view-file" class="hidden space-y-4">
+                            <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/60 hover:bg-indigo-50/30 rounded-2xl p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center min-h-[260px] relative group">
+                                <input type="file" id="file-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
+                                
+                                <div class="p-4 bg-indigo-50 text-indigo-600 rounded-2xl mb-3 border border-indigo-100 group-hover:scale-110 transition-transform">
+                                    <i data-lucide="image-plus" class="w-8 h-8"></i>
+                                </div>
+                                <p class="text-sm font-semibold text-slate-800">拖曳圖片至此，或<span class="text-indigo-600 underline underline-offset-2">點擊上傳</span></p>
+                                <p class="text-xs text-slate-400 mt-1">支援 PNG, JPG, WEBP, GIF 等格式</p>
+                            </div>
+
+                            <!-- Manual Read Clipboard Button -->
+                            <button onclick="readFromClipboardApi()" class="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-sm">
+                                <i data-lucide="clipboard" class="w-4 h-4 text-indigo-600"></i>
+                                <span>一鍵讀取剪貼簿圖片 (Ctrl + V 亦可)</span>
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Decoder Right Column Structured Results -->
+                <div class="lg:col-span-6">
+                    <div class="light-card rounded-2xl p-6 min-h-[420px] flex flex-col justify-between shadow-sm">
+                        
+                        <div>
+                            <div class="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+                                <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                    <i data-lucide="check-circle-2" class="w-4.5 h-4.5 text-emerald-500"></i>
+                                    解碼與智慧解析結果
+                                </h3>
+                                <span id="decode-status-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                                    等待解碼...
+                                </span>
+                            </div>
+
+                            <!-- Result Display Box -->
+                            <div id="result-box" class="hidden space-y-4">
+                                
+                                <!-- Raw Text View -->
+                                <div class="p-4 bg-slate-900 text-slate-100 rounded-xl border border-slate-800 font-mono text-xs break-all max-h-40 overflow-y-auto select-all leading-relaxed shadow-inner">
+                                    <p id="decoded-text-raw"></p>
+                                </div>
+
+                                <!-- Structured Render Cards -->
+                                <div id="parsed-card-container"></div>
+
+                            </div>
+
+                            <!-- Empty Placeholder -->
+                            <div id="result-empty" class="py-16 text-center space-y-3">
+                                <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-200">
+                                    <i data-lucide="scan" class="w-6 h-6"></i>
+                                </div>
+                                <p class="text-xs text-slate-500">請啟動相機、選擇圖片檔案或貼上圖片以獲取解碼內容</p>
+                            </div>
+                        </div>
+
+                        <!-- Result Actions -->
+                        <div id="result-actions" class="hidden space-y-2 pt-4 border-t border-slate-200">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <button onclick="copyDecodedText()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-100">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                    複製解碼文字
+                                </button>
+                                <a id="open-link-btn" href="#" target="_blank" class="hidden w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-100">
+                                    <i data-lucide="external-link" class="w-4 h-4"></i>
+                                    開啟網址連結
+                                </a>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+
+        <!-- ================= VIEW 2: HISTORY ================= -->
+        <section id="view-history" class="view-panel hidden space-y-4">
+            <div class="light-card rounded-2xl p-6 shadow-sm">
+                
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="history" class="w-5 h-5 text-indigo-600"></i>
+                            掃描解碼歷史紀錄
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">所有紀錄皆安全儲存於您的本機瀏覽器內，不會洩漏隱私</p>
+                    </div>
+
+                    <!-- Search & Clear Controls -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Search Box -->
+                        <div class="relative">
+                            <input type="text" id="history-search" oninput="renderHistoryUI()" placeholder="搜尋紀錄內容..." class="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 shadow-sm">
+                            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"></i>
+                        </div>
+
+                        <button onclick="clearHistory()" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 rounded-xl text-xs font-semibold transition flex items-center gap-1">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            清除全部
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History List -->
+                <div id="history-list" class="divide-y divide-slate-100 mt-2 min-h-[220px]"></div>
+
+                <!-- Empty State -->
+                <div id="history-empty" class="py-16 text-center space-y-3">
+                    <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-200">
+                        <i data-lucide="inbox" class="w-6 h-6"></i>
+                    </div>
+                    <p class="text-xs text-slate-500">目前尚無掃描紀錄</p>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Global Toast Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- JavaScript Engine -->
+    <script>
+        /* ================= GLOBAL APP STATE ================= */
+        let activeView = 'decoder';
+        let soundEnabled = true;
+        let historyData = [];
+        
+        // Camera & Scanner state
+        let isScanningCamera = false;
+        let mediaStream = null;
+        let cameraFacingMode = 'environment';
+        let animationFrameId = null;
+        let audioCtx = null;
+
+        // Script Loader Fallback
+        function loadScriptFallback(lib) {
+            if (lib === 'jsqr') {
+                const script = document.createElement('script');
+                script.src = "https://unpkg.com/jsqr@1.4.0/dist/jsQR.js";
+                document.head.appendChild(script);
+            }
+        }
+
+        /* ================= DOM INITIALIZATION ================= */
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            loadHistoryFromStorage();
+            setupPasteListener();
+            setupDropZone();
+            switchView('decoder');
+        });
+
+        /* ================= VIEW NAVIGATION ENGINE ================= */
+        function switchView(viewName) {
+            activeView = viewName;
+            
+            document.querySelectorAll('.view-panel').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-indigo-600', 'shadow-sm');
+                btn.classList.add('text-slate-600', 'hover:text-slate-900');
+            });
+
+            const targetView = document.getElementById(`view-${viewName}`);
+            if (targetView) targetView.classList.remove('hidden');
+
+            const activeNav = document.getElementById(`nav-${viewName}`);
+            if (activeNav) {
+                activeNav.classList.add('bg-white', 'text-indigo-600', 'shadow-sm');
+                activeNav.classList.remove('text-slate-600', 'hover:text-slate-900');
+            }
+
+            // Stop camera if leaving decoder view
+            if (viewName !== 'decoder' && isScanningCamera) {
+                stopCamera();
+            }
+
+            if (viewName === 'history') {
+                renderHistoryUI();
+            }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            lucide.createIcons();
+        }
+
+        /* ================= DECODER & SCANNER LOGIC ================= */
+        function switchDecodeMode(mode) {
+            document.getElementById('dec-mode-cam-btn').className = mode === 'camera' ?
+                'flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center justify-center gap-2 transition' :
+                'flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition';
+
+            document.getElementById('dec-mode-file-btn').className = mode === 'file' ?
+                'flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center justify-center gap-2 transition' :
+                'flex-1 pb-3 text-xs sm:text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition';
+
+            if (mode === 'camera') {
+                document.getElementById('dec-view-camera').classList.remove('hidden');
+                document.getElementById('dec-view-file').classList.add('hidden');
+            } else {
+                document.getElementById('dec-view-camera').classList.add('hidden');
+                document.getElementById('dec-view-file').classList.remove('hidden');
+                if (isScanningCamera) stopCamera();
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const constraints = {
+                    video: { facingMode: cameraFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                };
+                mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const video = document.getElementById('scanner-video');
+                video.srcObject = mediaStream;
+                video.setAttribute('playsinline', true);
+                video.classList.remove('hidden');
+                await video.play();
+
+                isScanningCamera = true;
+                document.getElementById('cam-placeholder').classList.add('hidden');
+                document.getElementById('cam-overlay').classList.remove('hidden');
+                document.getElementById('start-cam-btn').classList.add('hidden');
+                document.getElementById('stop-cam-btn').classList.remove('hidden');
+                document.getElementById('switch-cam-btn').classList.remove('hidden');
+
+                requestAnimationFrame(tickScanner);
+                showToast('相機已啟動', 'info');
+            } catch (err) {
+                showToast('無法存取相機，請檢查權限設定', 'error');
+            }
+        }
+
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            isScanningCamera = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            document.getElementById('scanner-video').classList.add('hidden');
+            document.getElementById('cam-overlay').classList.add('hidden');
+            document.getElementById('cam-placeholder').classList.remove('hidden');
+            document.getElementById('start-cam-btn').classList.remove('hidden');
+            document.getElementById('stop-cam-btn').classList.add('hidden');
+            document.getElementById('switch-cam-btn').classList.add('hidden');
+        }
+
+        function switchCameraFacing() {
+            cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+            stopCamera();
+            startCamera();
+        }
+
+        function tickScanner() {
+            if (!isScanningCamera) return;
+
+            const video = document.getElementById('scanner-video');
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                const canvas = document.getElementById('scanner-canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                if (typeof jsQR !== 'undefined') {
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert",
+                    });
+
+                    if (code && code.data.trim() !== '') {
+                        handleScanSuccess(code.data);
+                        stopCamera();
+                        return;
+                    }
+                }
+            }
+            animationFrameId = requestAnimationFrame(tickScanner);
+        }
+
+        function setupDropZone() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) processImageFile(e.target.files[0]);
+            });
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50/50');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/50');
+                if (e.dataTransfer.files.length > 0) processImageFile(e.dataTransfer.files[0]);
+            });
+        }
+
+        function setupPasteListener() {
+            window.addEventListener('paste', (e) => {
+                if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let item of items) {
+                    if (item.type.indexOf('image') !== -1) {
+                        const blob = item.getAsFile();
+                        switchView('decoder');
+                        switchDecodeMode('file');
+                        processImageFile(blob);
+                        showToast('已為您讀取貼上的圖片');
+                        break;
+                    }
+                }
+            });
+        }
+
+        async function readFromClipboardApi() {
+            try {
+                const clipboardItems = await navigator.clipboard.read();
+                for (const item of clipboardItems) {
+                    for (const type of item.types) {
+                        if (type.startsWith('image/')) {
+                            const blob = await item.getType(type);
+                            processImageFile(blob);
+                            showToast('成功讀取剪貼簿圖片');
+                            return;
+                        }
+                    }
+                }
+                showToast('剪貼簿中未找到圖片檔案', 'error');
+            } catch (err) {
+                showToast('無法存取剪貼簿，請嘗試使用 Ctrl+V 貼上', 'error');
+            }
+        }
+
+        function processImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast('請選擇有效的圖片格式', 'error');
+                return;
+            }
+
+            if (typeof jsQR === 'undefined') {
+                return showToast('解碼元件未完成載入，請刷新頁面再試', 'error');
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+                    if (code && code.data) {
+                        handleScanSuccess(code.data);
+                    } else {
+                        showToast('未能辨識出 QR Code，請換一張清晰圖片', 'error');
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /* ================= SMART RESULT PARSER ================= */
+        function handleScanSuccess(rawText) {
+            playSuccessBeep();
+
+            document.getElementById('result-empty').classList.add('hidden');
+            document.getElementById('result-box').classList.remove('hidden');
+            document.getElementById('result-actions').classList.remove('hidden');
+            document.getElementById('decoded-text-raw').innerText = rawText;
+
+            const badge = document.getElementById('decode-status-badge');
+            badge.innerText = '解析成功';
+            badge.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+
+            const container = document.getElementById('parsed-card-container');
+            container.innerHTML = '';
+
+            const isUrl = /^https?:\/\/[^\s]+$/i.test(rawText.trim());
+            const openBtn = document.getElementById('open-link-btn');
+
+            if (isUrl) {
+                openBtn.href = rawText.trim();
+                openBtn.classList.remove('hidden');
+                container.innerHTML = `
+                    <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                        <i data-lucide="shield-alert" class="w-5 h-5 text-amber-600 shrink-0 mt-0.5"></i>
+                        <div class="text-xs text-amber-900 space-y-1">
+                            <p class="font-bold">外部網址提示</p>
+                            <p class="text-amber-700">開啟連結前請確認目標網站安全無虞。</p>
+                        </div>
+                    </div>
+                `;
+            } else if (rawText.startsWith('WIFI:')) {
+                openBtn.classList.add('hidden');
+                const wifiInfo = parseWifiString(rawText);
+                container.innerHTML = `
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                        <div class="flex items-center justify-between text-xs border-b border-slate-200 pb-2">
+                            <span class="font-bold text-indigo-600 flex items-center gap-1.5">
+                                <i data-lucide="wifi" class="w-4 h-4"></i> Wi-Fi 網路設定卡
+                            </span>
+                            <span class="px-2 py-0.5 bg-white border border-slate-200 text-slate-600 rounded text-[10px] font-mono">${wifiInfo.type}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div><span class="text-slate-500">SSID:</span> <span class="font-mono font-semibold text-slate-800">${escapeHtml(wifiInfo.ssid)}</span></div>
+                            <div class="flex items-center justify-between">
+                                <div><span class="text-slate-500">密碼:</span> <span id="wifi-pass-val" class="font-mono text-slate-800">••••••••</span></div>
+                                <button onclick="toggleWifiPassVisibility('${escapeJsString(wifiInfo.pass)}')" class="text-[10px] text-indigo-600 hover:underline font-semibold">顯示</button>
+                            </div>
+                        </div>
+                        <button onclick="copyToClipboard('${escapeJsString(wifiInfo.pass)}'); showToast('密碼已複製');" class="w-full py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs rounded-lg transition flex items-center justify-center gap-1 shadow-sm font-medium">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> 複製 Wi-Fi 密碼
+                        </button>
+                    </div>
+                `;
+            } else if (rawText.includes('BEGIN:VCARD')) {
+                openBtn.classList.add('hidden');
+                const vc = parseVCardString(rawText);
+                container.innerHTML = `
+                    <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                            <span class="font-bold text-purple-600 flex items-center gap-1.5">
+                                <i data-lucide="contact" class="w-4 h-4"></i> vCard 電子名片
+                            </span>
+                            <span class="text-slate-900 font-bold">${escapeHtml(vc.name || '未命名')}</span>
+                        </div>
+                        <div class="space-y-1 text-slate-700">
+                            ${vc.phone ? `<p><span class="text-slate-500">電話:</span> ${escapeHtml(vc.phone)}</p>` : ''}
+                            ${vc.email ? `<p><span class="text-slate-500">Email:</span> ${escapeHtml(vc.email)}</p>` : ''}
+                            ${vc.org ? `<p><span class="text-slate-500">公司:</span> ${escapeHtml(vc.org)}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                openBtn.classList.add('hidden');
+                container.innerHTML = `
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                        <span>純文字內容</span>
+                        <span class="font-mono text-slate-400">${rawText.length} 字元</span>
+                    </div>
+                `;
+            }
+
+            addHistoryRecord(rawText);
+            showToast('QR Code 解碼成功！');
+            lucide.createIcons();
+        }
+
+        function parseWifiString(str) {
+            const ssidMatch = str.match(/S:([^;]+)/);
+            const passMatch = str.match(/P:([^;]+)/);
+            const typeMatch = str.match(/T:([^;]+)/);
+            return {
+                ssid: ssidMatch ? ssidMatch[1] : '未知',
+                pass: passMatch ? passMatch[1] : '',
+                type: typeMatch ? typeMatch[1] : 'WPA'
+            };
+        }
+
+        function toggleWifiPassVisibility(pass) {
+            const el = document.getElementById('wifi-pass-val');
+            if (el.innerText === '••••••••') {
+                el.innerText = pass || '(無密碼)';
+            } else {
+                el.innerText = '••••••••';
+            }
+        }
+
+        function parseVCardString(str) {
+            const fnMatch = str.match(/FN:([^\n\r]+)/);
+            const telMatch = str.match(/TEL;?[^:]*:([^\n\r]+)/);
+            const emailMatch = str.match(/EMAIL;?[^:]*:([^\n\r]+)/);
+            const orgMatch = str.match(/ORG:([^\n\r]+)/);
+            return {
+                name: fnMatch ? fnMatch[1] : '',
+                phone: telMatch ? telMatch[1] : '',
+                email: emailMatch ? emailMatch[1] : '',
+                org: orgMatch ? orgMatch[1] : ''
+            };
+        }
+
+        function copyDecodedText() {
+            const text = document.getElementById('decoded-text-raw').innerText;
+            copyToClipboard(text);
+            showToast('已複製解碼內容');
+        }
+
+        /* ================= AUDIO & SOUND EFFECTS ================= */
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('sound-toggle-btn');
+            if (soundEnabled) {
+                if (btn) {
+                    btn.classList.remove('text-slate-400');
+                    btn.classList.add('text-indigo-600');
+                }
+                showToast('解碼提示音效已開啟');
+            } else {
+                if (btn) {
+                    btn.classList.remove('text-indigo-600');
+                    btn.classList.add('text-slate-400');
+                }
+                showToast('解碼提示音效已關閉', 'info');
+            }
+        }
+
+        function playSuccessBeep() {
+            if (!soundEnabled) return;
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.15);
+            } catch (e) {
+                console.log('Audio play error:', e);
+            }
+        }
+
+        /* ================= HISTORY ENGINE ================= */
+        function loadHistoryFromStorage() {
+            try {
+                const stored = localStorage.getItem('qr_decoder_history');
+                if (stored) {
+                    historyData = JSON.parse(stored);
+                    updateHistoryBadge();
+                }
+            } catch (e) {}
+        }
+
+        function addHistoryRecord(content) {
+            if (!content || content.trim() === '') return;
+
+            if (historyData.length > 0 && historyData[0].content === content) return;
+
+            const record = {
+                id: Date.now(),
+                content: content,
+                time: new Date().toLocaleString('zh-TW', { hour12: false })
+            };
+
+            historyData.unshift(record);
+            if (historyData.length > 50) historyData.pop();
+
+            try {
+                localStorage.setItem('qr_decoder_history', JSON.stringify(historyData));
+            } catch(e) {}
+
+            updateHistoryBadge();
+        }
+
+        function updateHistoryBadge() {
+            const badge = document.getElementById('history-badge');
+            if (historyData.length > 0) {
+                badge.innerText = historyData.length;
+                badge.classList.remove('hidden');
+                badge.classList.add('flex');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function renderHistoryUI() {
+            const container = document.getElementById('history-list');
+            const emptyState = document.getElementById('history-empty');
+            const searchVal = (document.getElementById('history-search')?.value || '').toLowerCase();
+
+            let filtered = historyData.filter(item => {
+                if (searchVal && !item.content.toLowerCase().includes(searchVal)) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            container.innerHTML = filtered.map(item => {
+                const isUrl = /^https?:\/\/[^\s]+$/i.test(item.content.trim());
+
+                return `
+                    <div class="py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group">
+                        <div class="space-y-1 max-w-xl">
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 text-[10px] rounded-md font-medium border bg-indigo-50 text-indigo-700 border-indigo-100">
+                                    解碼紀錄
+                                </span>
+                                <span class="text-[11px] text-slate-400 font-mono">${item.time}</span>
+                            </div>
+                            <p class="text-xs text-slate-800 font-mono break-all line-clamp-2">${escapeHtml(item.content)}</p>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            ${isUrl ? `
+                                <a href="${escapeHtml(item.content)}" target="_blank" class="p-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-xs transition shadow-sm" title="前往連結">
+                                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                                </a>
+                            ` : ''}
+                            <button onclick="copyToClipboard('${escapeJsString(item.content)}'); showToast('已複製紀錄');" class="p-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-lg text-xs transition shadow-sm" title="複製內容">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="deleteHistoryItem(${item.id})" class="p-2 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-400 hover:text-rose-600 rounded-lg text-xs transition shadow-sm" title="刪除">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function deleteHistoryItem(id) {
+            historyData = historyData.filter(item => item.id !== id);
+            try {
+                localStorage.setItem('qr_decoder_history', JSON.stringify(historyData));
+            } catch(e) {}
+            renderHistoryUI();
+            updateHistoryBadge();
+            showToast('已刪除紀錄');
+        }
+
+        function clearHistory() {
+            if (historyData.length === 0) return;
+            historyData = [];
+            try {
+                localStorage.removeItem('qr_decoder_history');
+            } catch(e) {}
+            renderHistoryUI();
+            updateHistoryBadge();
+            showToast('歷史紀錄已全部清除');
+        }
+
+        /* ================= UTILITY FUNCTIONS ================= */
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+            });
+        }
+
+        function escapeJsString(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            const bgClass = type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' :
+                            type === 'info' ? 'bg-slate-800 border-slate-700 text-slate-100' :
+                            'bg-indigo-50 border-indigo-200 text-indigo-900';
+            
+            const iconName = type === 'error' ? 'alert-circle' : type === 'info' ? 'info' : 'check-circle-2';
+
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border ${bgClass} shadow-lg backdrop-blur-md text-xs font-semibold flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 shrink-0"></i><span>${escapeHtml(message)}</span>`;
+
+            container.appendChild(toast);
+            if (window.lucide) lucide.createIcons({ targets: [toast] });
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
